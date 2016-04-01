@@ -1272,6 +1272,10 @@ class ConstantFunctionComponent: public UpdatableComponent {
 // maximum amount of change per minibatch, for stability.
 class NaturalGradientPerElementScaleComponent: public PerElementScaleComponent {
  public:
+  enum TensorVectorizationType  {
+    kYzx = 0,
+    kZyx = 1
+  };
 
   virtual std::string Info() const;
 
@@ -1320,6 +1324,71 @@ class NaturalGradientPerElementScaleComponent: public PerElementScaleComponent {
 
   const NaturalGradientPerElementScaleComponent &operator
       = (const NaturalGradientPerElementScaleComponent &other); // Disallow.
+};
+
+class CuDNNConvolutionComponent: public UpdatableComponent {
+ public:
+  enum TensorVectorizationType  {
+    kYzx = 0,
+    kZyx = 1
+  };
+
+  void Propagate(const ComponentPrecomputedIndexes *indexes,
+		 const CuMatrixBase<BaseFloat> &in,
+		 CuMatrixBase<BaseFloat> *out) const;
+  void InitFromConfig(ConfigLine *cfl);
+  void Init(int32 input_x_dim, int32 input_y_dim, int32 input_z_dim,
+	    int32 filt_x_dim, int32 filt_y_dim, int32 filt_z_dim,
+	    int32 filt_x_stride, int32 filt_y_stride, int32 filt_z_stride,
+	    int32 num_filters,
+	    int32 pad_x_dim, int32 pad_y_dim, int32 pad_z_dim,
+	    int32 upscale_x_dim, int32 upscale_y_dim, int32 upscale_z_dim,
+	    TensorVectorizationType input_vectorization,
+	    BaseFloat param_stddev, BaseFloat bias_stddev);
+
+ private:
+  int32 input_x_dim_;   // size of the input along x-axis
+                        // (e.g. number of time steps)
+  int32 input_y_dim_;   // size of input along y-axis
+                        // (e.g. number of mel-frequency bins)
+  int32 input_z_dim_;   // size of input along z-axis
+                        // (e.g. number of channels is 3 if the input has
+                        // features + delta + delta-delta features
+
+  TensorVectorizationType input_vectorization_; // type of vectorization of the
+  // input 3D tensor. Accepts zyx and yzx formats
+
+  CuMatrix<BaseFloat> filter_params_;
+  // the filter (or kernel) matrix is a matrix of vectorized 3D filters
+  // where each row in the matrix corresponds to one filter.
+  // The 3D filter tensor is vectorized in zyx format.
+  // The first row of the matrix corresponds to the first filter and so on.
+  // Keep in mind the vectorization type and order of filters when using file
+  // based initialization.
+
+  CuVector<BaseFloat> bias_params_;
+  // the filter-specific bias vector (i.e., there is a seperate bias added
+  // to the output of each filter).
+  bool is_gradient_;
+
+  // cudnn specific variables.
+  static const int32 kConvolutionDimension_ = 3; // the number of dimensions that the filter is in
+  // This is volumteric convolution, so the filter is 3D.
+
+  // When we serialize, we'll need to call the getter functions on
+  // these, since they are opaque types whose implementations we do
+  // not know.  We could also store the data stored within these as members of the class
+  // as well, but I do not want to have redundant data lying around.
+  cudnnFilterDescriptor_t filterDesc_;
+  cudnnConvolutionDescriptor_t convDesc_;
+  cudnnConvolutionFwdAlgo_t forwardAlgo_;
+  cudnnConvolutionBwdFilterAlgo_t backwardFilterAlgo_;
+  cudnnConvolutionBwdDataAlgo_t backwardDataAlgo_;
+
+  void *workSpace_;
+  uint32 workSpaceSize_; // I belive size_t (used in cudnn.h) == kaldi::uint32 == uint32_t
+
+  const CuDNNConvolutionComponent &operator = (const CuDNNConvolutionComponent &other); // Disallow.
 };
 
 /**

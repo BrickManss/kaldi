@@ -46,8 +46,8 @@ static void UnitTestCudnnConvolutionForward() {
   MatrixIndexT strideX[] = {c_x * d_x * h_x * w_x, d_x * h_x * w_x, h_x * w_x, w_x, 1};
   cudnnTensorDescriptor_t xDesc;
   cudnnConv.InitializeTensorDescriptor(nbDimsX, dimX, strideX, &xDesc);
-  CuMatrix<Real> x(n_x, sizeX / n_x, kUndefined, kStrideEqualNumCols);
-  x.SetRandn();
+  //CuMatrix<Real> x(n_x, sizeX / n_x, kUndefined, kStrideEqualNumCols);
+  //x.SetRandn();
 
   // filter
   size_t nbDimsW = 5;
@@ -58,8 +58,8 @@ static void UnitTestCudnnConvolutionForward() {
   }
   cudnnFilterDescriptor_t wDesc;
   cudnnConv.InitializeFilterDescriptor(nbDimsW, filterDimA, &wDesc);
-  CuMatrix<Real> w(1, sizeW, kUndefined, kStrideEqualNumCols);
-  w.SetRandn();
+  //CuMatrix<Real> w(1, sizeW, kUndefined, kStrideEqualNumCols);
+  //w.SetRandn();
 
   // convolution
   size_t arrayLength = 3;
@@ -83,13 +83,29 @@ static void UnitTestCudnnConvolutionForward() {
     strideY[i] = dimY[i + 1] * strideY[i + 1];
   cudnnTensorDescriptor_t yDesc;
   cudnnConv.InitializeTensorDescriptor(nbDimsX, dimY, strideY, &yDesc);
-  CuMatrix<Real> y(n_x, sizeY / n_x, kUndefined, kStrideEqualNumCols);
+  //CuMatrix<Real> y(n_x, sizeY / n_x, kUndefined, kStrideEqualNumCols);
+
+  // show memory usage of GPU
+
+  size_t free_byte ;
+  size_t total_byte ;
+  cudaError_t cuda_status = cudaMemGetInfo( &free_byte, &total_byte ) ;
+  if ( cudaSuccess != cuda_status ){
+    printf("Error: cudaMemGetInfo fails, %s \n", cudaGetErrorString(cuda_status) );
+    exit(1);
+  }
+  double free_db = (double)free_byte ;
+  double total_db = (double)total_byte ;
+  double used_db = total_db - free_db ;
+  printf("GPU memory usage: used = %f, free = %f MB, total = %f MB\n", used_db/1024.0/1024.0, 
+	 free_db/1024.0/1024.0, total_db/1024.0/1024.0);
 
   // find best forward algorithm
   const int requestedAlgoCount = 5;
   cudnnConvolutionFwdAlgo_t algo;
   cudnnConv.FindBestConvolutionFwdAlgo(xDesc, wDesc, convDesc, yDesc, requestedAlgoCount, &algo);
 
+  /*
   // work space size needed according to the selected forwarding algorithm
   size_t workSpaceSizeInBytes;
   cudnnConv.GetConvolutionFwdWorkspaceSize(xDesc, wDesc, convDesc, yDesc, algo, &workSpaceSizeInBytes);
@@ -99,7 +115,7 @@ static void UnitTestCudnnConvolutionForward() {
 
   // forwarding 
   cudnnConv.ConvolutionForward(xDesc, x, wDesc, w, convDesc, algo, &workSpace, workSpaceSizeInBytes, yDesc, &y);
-
+  */
   // destroy
   cudnnConv.DestroyTensorDescriptor(xDesc);
   cudnnConv.DestroyTensorDescriptor(yDesc);
