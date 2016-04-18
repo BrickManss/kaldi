@@ -34,17 +34,17 @@ class CuDNN3DConvolutionComponent: public UpdatableComponent {
     kZyx = 1
   };
 
-  virtual int32 InputDim() const { return input_x_dim_ * input_y_dim_ * input_z_dim_; }
+  virtual int32 InputDim() const { return input_num_filters_ * input_x_dim_ * input_y_dim_ * input_z_dim_; }
   virtual int32 OutputDim() const;
 
   virtual std::string Info() const;
   virtual void InitFromConfig(ConfigLine *cfl);
 
-  CuDNN3DConvolutionComponent() { } // use Init to really initialize.
+  CuDNN3DConvolutionComponent(); // use Init to really initialize.
   virtual std::string Type() const { return "CuDNN3DConvolutionComponent"; }
   virtual int32 Properties() const {
     return kSimpleComponent|kUpdatableComponent|kBackpropNeedsInput|
-            kBackpropAdds|kPropagateAdds|kInputContiguous|kOutputContiguous;
+      kBackpropAdds|kPropagateAdds|kInputContiguous|kOutputContiguous;
   }
 
   virtual void Propagate(const ComponentPrecomputedIndexes *indexes,
@@ -58,6 +58,7 @@ class CuDNN3DConvolutionComponent: public UpdatableComponent {
                         Component *to_update,
                         CuMatrixBase<BaseFloat> *in_deriv) const;
   void Init(int32 input_x_dim, int32 input_y_dim, int32 input_z_dim,
+            int32 input_num_filters,
             int32 filt_x_dim, int32 filt_y_dim, int32 filt_z_dim,
             int32 filt_x_stride, int32 filt_y_stride, int32 filt_z_stride,
             int32 num_filters,
@@ -73,13 +74,25 @@ class CuDNN3DConvolutionComponent: public UpdatableComponent {
     const CuMatrixBase<BaseFloat> &filter_params,
     const CuVectorBase<BaseFloat> &bias_params,
     int32 input_x_dim, int32 input_y_dim, int32 input_z_dim,
+    int32 input_num_filters,
     int32 filt_x_dim, int32 filt_y_dim, int32 filt_z_dim,
     int32 filt_x_step, int32 filt_y_step, int32 filt_z_step,
     TensorVectorizationType input_vectorization,
     BaseFloat learning_rate);
   ~CuDNN3DConvolutionComponent();
+
+  virtual Component *Copy() const;
+  virtual void Read(std::istream &is, bool binary);
+  virtual void Write(std::ostream &os, bool binary) const;
+  virtual void SetZero(bool treat_as_gradient);
+  virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
+  virtual int32 NumParameters() const;
+  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void PerturbParams(BaseFloat stddev);
  private:
   std::vector<int32> GetOutputDims() const;
+  std::vector<int32> GetFilterDims() const;
 
   int32 input_x_dim_;   // size of the input along x-axis
                         // (e.g. number of time steps)
@@ -88,9 +101,7 @@ class CuDNN3DConvolutionComponent: public UpdatableComponent {
   int32 input_z_dim_;   // size of input along z-axis
                         // (e.g. number of channels is 3 if the input has
                         // features + delta + delta-delta features
-
-  TensorVectorizationType input_vectorization_; // type of vectorization of the
-  // input 3D tensor. Accepts zyx and yzx formats
+  int32 input_num_filters_;
 
   CuMatrix<BaseFloat> filter_params_;
   // the filter (or kernel) matrix is a matrix of vectorized 3D filters
@@ -103,7 +114,14 @@ class CuDNN3DConvolutionComponent: public UpdatableComponent {
   CuVector<BaseFloat> bias_params_;
   // the filter-specific bias vector (i.e., there is a seperate bias added
   // to the output of each filter).
+
+  int32 num_filters_;
+  void *work_space_;
+  uint32 work_space_size_; // I belive size_t (used in cudnn.h) == kaldi::uint32 == uint32_t
   bool is_gradient_;
+
+  TensorVectorizationType input_vectorization_; // type of vectorization of the
+  // input 3D tensor. Accepts zyx and yzx formats
 
   // cudnn specific variables.
   static const int32 kConvolutionDimension_ = 3; // the number of dimensions that the filter is in
@@ -114,15 +132,11 @@ class CuDNN3DConvolutionComponent: public UpdatableComponent {
   // not know.  We could also store the data stored within these as members of the class
   // as well, but I do not want to have redundant data lying around.
   cudnnFilterDescriptor_t filter_desc_;
-  int32 num_filters_;
-  cudnnConvolutionDescriptor_t conv_desc_;
   cudnnTensorDescriptor_t bias_desc_;
+  cudnnConvolutionDescriptor_t conv_desc_;
   cudnnConvolutionFwdAlgo_t forward_algo_;
   cudnnConvolutionBwdFilterAlgo_t backward_filter_algo_;
   cudnnConvolutionBwdDataAlgo_t backward_data_algo_;
-
-  void *work_space_;
-  uint32 work_space_size_; // I belive size_t (used in cudnn.h) == kaldi::uint32 == uint32_t
 
   const CuDNN3DConvolutionComponent &operator = (const CuDNN3DConvolutionComponent &other); // Disallow.
 };
